@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--model", help="model file path")
     parser.add_argument("--path", default="./demo", help="path to images or video")
     parser.add_argument("--camid", type=int, default=0, help="webcam demo camera id")
+    parser.add_argument("--saveJson", help="Json's path")
     parser.add_argument(
         "--save_result",
         action="store_true",
@@ -132,12 +133,13 @@ def main():
                             all_box.append([ x0, y0, x1, y1, score])
             #all_box.sort(key=lambda v: v[5])
             for a_box in all_box:
-                bbox_res.append(dict(image_path = image_name, bbox = a_box))
+                bbox_res.append(dict(image_path = image_name, bbox = a_box, image_info = meta['img_info']))
 
         json_object = json.dumps(bbox_res, indent=4)
 
         # Writing to sample.json
-        with open("/media/hkuit164/Backup/pose_thermal/result.json", "w") as outfile:
+        jsonPath = args.saveJson
+        with open(jsonPath, "w") as outfile:
             outfile.write(json_object)
 
             #ch = cv2.waitKey(0)
