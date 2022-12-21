@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--model", help="model file path")
     parser.add_argument("--path", default="./demo", help="path to images or video")
     parser.add_argument("--camid", type=int, default=0, help="webcam demo camera id")
+    parser.add_argument("--saveJson", help="Json's path")
     parser.add_argument(
         "--save_result",
         action="store_true",
@@ -60,7 +61,6 @@ class Predictor(object):
             img = cv2.imread(img)
         else:
             img_info["file_name"] = None
-
         height, width = img.shape[:2]
         img_info["height"] = height
         img_info["width"] = width
@@ -82,14 +82,25 @@ class Predictor(object):
         return result_img
 
 
+# def get_image_list(path):
+#     image_names = []
+#     for maindir, subdir, file_name_list in os.walk(path):
+#         for filename in file_name_list:
+#             apath = os.path.join(maindir, filename)
+#             ext = os.path.splitext(apath)[1]
+#             if ext in image_ext:
+#                 image_names.append(apath)
+#     print(image_names)
+#     return image_names
+
 def get_image_list(path):
-    image_names = []
-    for maindir, subdir, file_name_list in os.walk(path):
-        for filename in file_name_list:
-            apath = os.path.join(maindir, filename)
-            ext = os.path.splitext(apath)[1]
-            if ext in image_ext:
-                image_names.append(apath)
+    image_names=[]
+    files = os.listdir(path)
+    for file in files:
+        if file[0] == ".":
+            continue
+        image_names.append(os.path.join(path,file))
+    print(image_names)
     return image_names
 
 
@@ -107,11 +118,16 @@ def main():
     if args.demo == "image":
         if os.path.isdir(args.path):
             files = get_image_list(args.path)
+            print(1)
+            print(args.path)
         else:
             files = [args.path]
+            print(0)
+            print(args.path)
         files.sort()
         bbox_res = []
         for image_name in files:
+            print(image_name)
             meta, res = predictor.inference(image_name)
             #result_image = predictor.visualize(res[0], meta, cfg.class_names, 0.35)
             #if args.save_result:
@@ -132,12 +148,13 @@ def main():
                             all_box.append([ x0, y0, x1, y1, score])
             #all_box.sort(key=lambda v: v[5])
             for a_box in all_box:
-                bbox_res.append(dict(image_path = image_name, bbox = a_box))
+                bbox_res.append(dict(image_path = image_name, bbox = a_box, image_info = meta['img_info']))
 
         json_object = json.dumps(bbox_res, indent=4)
 
         # Writing to sample.json
-        with open("/media/hkuit164/Backup/pose_thermal/result.json", "w") as outfile:
+        jsonPath = args.saveJson
+        with open(jsonPath, "w") as outfile:
             outfile.write(json_object)
 
             #ch = cv2.waitKey(0)
@@ -148,31 +165,39 @@ def main():
         width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)  # float
         height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)  # float
         fps = cap.get(cv2.CAP_PROP_FPS)
-        save_folder = os.path.join(
-            cfg.save_dir, time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
-        )
-        mkdir(local_rank, save_folder)
-        save_path = (
-            os.path.join(save_folder, args.path.replace("\\", "/").split("/")[-1])
-            if args.demo == "video"
-            else os.path.join(save_folder, "camera.mp4")
-        )
-        print(f"save_path is {save_path}")
-        vid_writer = cv2.VideoWriter(
-            save_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (int(width), int(height))
-        )
+        jsonPath = args.saveJson
+        dirname = os.path.dirname(jsonPath)
+        imageFolder = os.path.join(dirname, "images")
+        os.makedirs(imageFolder, exist_ok=True)
+        bbox_res = []
+        i=0
         while True:
             ret_val, frame = cap.read()
             if ret_val:
                 meta, res = predictor.inference(frame)
-                result_frame = predictor.visualize(res[0], meta, cfg.class_names, 0.35)
-                if args.save_result:
-                    vid_writer.write(result_frame)
-                ch = cv2.waitKey(1)
-                if ch == 27 or ch == ord("q") or ch == ord("Q"):
-                    break
+                pre = res[0]
+                all_box = []
+                for label in pre:
+                    if label == 0:
+                        for bbox in pre[label]:
+                            score = bbox[-1]
+                            if score > 0.5:
+                                x0, y0, x1, y1 = [int(i) for i in bbox[:4]]
+                                all_box.append([ x0, y0, x1, y1, score])
+                #all_box.sort(key=lambda v: v[5])
+                image_name = os.path.join(imageFolder, str(i)+".png")
+                i=i+1
+                for a_box in all_box:
+                    bbox_res.append(dict(image_path = image_name, bbox = a_box, image_info = meta['img_info']))
+                cv2.imwrite(image_name, frame)
             else:
                 break
+        json_object = json.dumps(bbox_res, indent=4)
+
+        # Writing to sample.json
+        
+        with open(jsonPath, "w") as outfile:
+            outfile.write(json_object)
 
 
 if __name__ == "__main__":
